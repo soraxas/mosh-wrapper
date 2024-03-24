@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+
+import os
+import argparse
+import subprocess
+import json
+
+
+parser = argparse.ArgumentParser(prog="wrapper for using mosh with assh")
+parser.add_argument("host")
+
+args = parser.parse_args()
+
+assh_config = json.loads(subprocess.check_output(["assh", "config", "json"]).decode())
+
+hosts = assh_config["hosts"]
+
+
+def build_arg():
+    try:
+        target_host = hosts[args.host]
+    except KeyError:
+        return [args.host]
+        # print(f"Host {args.host} does not exists!", file=sys.stderr)
+        # exit(1)
+
+    # build ssh flags
+    port = target_host.get("Port", "22")
+    hostname = target_host.get("HostName", args.host)
+    try:
+        hostname = f"{target_host['User']}@{hostname}"
+    except KeyError:
+        pass
+
+    return [f"--ssh=ssh -p {port}", hostname]
+
+
+print(" ".join(map(str, ["mosh", *build_arg()])))
+
+os.execvp("mosh", [__file__] + build_arg())
