@@ -3,7 +3,7 @@
 import os
 import argparse
 import subprocess
-import json
+import tempfile
 
 
 parser = argparse.ArgumentParser(prog="wrapper for using mosh with assh")
@@ -11,30 +11,15 @@ parser.add_argument("host")
 
 args = parser.parse_args()
 
-assh_config = json.loads(subprocess.check_output(["assh", "config", "json"]).decode())
 
-hosts = assh_config["hosts"]
-
-
-def build_arg():
-    try:
-        target_host = hosts[args.host]
-    except KeyError:
-        return [args.host]
-        # print(f"Host {args.host} does not exists!", file=sys.stderr)
-        # exit(1)
-
-    # build ssh flags
-    port = target_host.get("Port", "22")
-    hostname = target_host.get("HostName", args.host)
-    try:
-        hostname = f"{target_host['User']}@{hostname}"
-    except KeyError:
-        pass
-
-    return [f"--ssh=ssh -p {port}", hostname]
+# build a temp assh config with uncommmented HostName
+ps = subprocess.Popen(["assh", "config", "build"], stdout=subprocess.PIPE)
+output = subprocess.check_output(('sed', 's/# HostName:/HostName/'), stdin=ps.stdout)
+ps.wait()
 
 
-print(" ".join(map(str, ["mosh", *build_arg()])))
+with tempfile.NamedTemporaryFile() as fp:
+    fp.write(output)
 
-os.execvp("mosh", [__file__] + build_arg())
+    subprocess.check_call(["mosh", f"--ssh=ssh -F {fp.name}", args.host])
+    # os.execvp("mosh", [__file__] + [f"--ssh=ssh -F {fp.name}", args.host])
